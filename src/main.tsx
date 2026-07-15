@@ -4,6 +4,7 @@ import { characters as seedCharacters, Character } from './data/characters';
 import { buildInitiation, catchUpOffline, simulateDailyLife } from './simulation/world';
 import { requestDialogue } from './api/dialogue';
 import { sqliteSchema } from './data/schema';
+import { starterTranscriptsByCharacter } from './data/conversations';
 import './styles/app.css';
 
 type ChatMessage = { sender: string; body: string; at: string; pending?: boolean };
@@ -19,9 +20,14 @@ function App() {
   const [selected, setSelected] = useState(characters[0]);
   const [input, setInput] = useState('');
   const [typingByCharacter, setTypingByCharacter] = useState<Record<string, boolean>>({});
-  const [messagesByCharacter, setMessagesByCharacter] = useState<Record<string, ChatMessage[]>>({
-    char_kat_001: [{ sender:'PixelKat', body:'hey\njay said you were asking about me lol', at:'21:00' }],
-  });
+  const [messagesByCharacter, setMessagesByCharacter] = useState<Record<string, ChatMessage[]>>(() =>
+    Object.fromEntries(
+      Object.entries(starterTranscriptsByCharacter).map(([characterId, transcript]) => [
+        characterId,
+        transcript.map(message => ({ ...message })),
+      ]),
+    ),
+  );
   const daily = useMemo(() => simulateDailyLife(characters), [characters]);
   const catchup = useMemo(() => catchUpOffline(characters, new Date(Date.now()-1000*60*60*7)), [characters]);
   const initiation = buildInitiation(selected);
