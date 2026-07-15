@@ -18,21 +18,34 @@ function App() {
   const [characters] = useState(seedCharacters);
   const [selected, setSelected] = useState(characters[0]);
   const [input, setInput] = useState('');
-  const [typing, setTyping] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([{ sender:'PixelKat', body:'hey\njay said you were asking about me lol', at:'21:00' }]);
+  const [typingByCharacter, setTypingByCharacter] = useState<Record<string, boolean>>({});
+  const [messagesByCharacter, setMessagesByCharacter] = useState<Record<string, ChatMessage[]>>({
+    char_kat_001: [{ sender:'PixelKat', body:'hey\njay said you were asking about me lol', at:'21:00' }],
+  });
   const daily = useMemo(() => simulateDailyLife(characters), [characters]);
   const catchup = useMemo(() => catchUpOffline(characters, new Date(Date.now()-1000*60*60*7)), [characters]);
   const initiation = buildInitiation(selected);
   const simulatedSelected = daily.characters.find(c => c.id === selected.id);
+  const messages = messagesByCharacter[selected.id] ?? [];
+  const typing = typingByCharacter[selected.id] ?? false;
   async function send() {
     if (!input.trim()) return;
     const text = input.trim(); setInput('');
-    setMessages(m => [...m, { sender:'You', body:text, at:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) }]);
-    setTyping(true);
-    const response = await requestDialogue(selected, text);
+    const selectedId = selected.id;
+    const selectedScreenName = selected.screenName;
+    const selectedCharacter = selected;
+    setMessagesByCharacter(messagesMap => ({
+      ...messagesMap,
+      [selectedId]: [...(messagesMap[selectedId] ?? []), { sender:'You', body:text, at:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) }],
+    }));
+    setTypingByCharacter(typingMap => ({ ...typingMap, [selectedId]: true }));
+    const response = await requestDialogue(selectedCharacter, text);
     response.messages.forEach((msg, index) => setTimeout(() => {
-      setMessages(m => [...m, { sender:selected.screenName, body:msg.text, at:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) }]);
-      if (index === response.messages.length-1) setTyping(false);
+      setMessagesByCharacter(messagesMap => ({
+        ...messagesMap,
+        [selectedId]: [...(messagesMap[selectedId] ?? []), { sender:selectedScreenName, body:msg.text, at:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) }],
+      }));
+      if (index === response.messages.length-1) setTypingByCharacter(typingMap => ({ ...typingMap, [selectedId]: false }));
     }, msg.delayMs));
   }
   const online = characters.filter(c => c.status==='online'); const away = characters.filter(c => c.status==='away'); const offline = characters.filter(c => c.status==='offline');
