@@ -1,7 +1,7 @@
 import { Character, ProfileVariant, RelationshipState, Status } from '../data/characters';
 export type InitiationRecord = { characterId: string; reason: string; urgency: number; preferredMessageSeed: string; expiresAt: string };
 export type WorldEvent = { id: string; eventType: string; participants: string[]; occurredAt: string; summary: string; location: string; publicKnowledge: boolean; knownBy: Record<string, string>; effects: Record<string, number> };
-export type MissedConversation = { id: string; participants: string[]; summary: string; occurredAt: string; visibleToPlayer: boolean };
+export type MissedConversation = { id: string; participants: string[]; summary: string; occurredAt: string; visibleToPlayer: boolean; surfacedBy?: string };
 export type SimulatedCharacter = Character & { computedStatus: Status; activeBlock: string; profileChange?: ProfileVariant; relationshipPulse: RelationshipState[] };
 export type DailySimulation = { simulatedAt: string; characters: SimulatedCharacter[]; worldEvents: WorldEvent[]; missedConversations: MissedConversation[]; knowledgeBoundaries: string[] };
 export type OfflineCatchup = { hoursAbsent: number; worldEvents: string[]; missedMessages: InitiationRecord[]; absenceNotice: string; daily: DailySimulation };
@@ -30,34 +30,45 @@ export function buildInitiation(character: Character, now = new Date()): Initiat
   if (status === 'offline') return undefined;
   const reason = character.motives[0];
   if (!reason) return undefined;
-  const urgency = Math.min(.95, character.mood.intensity + (status === 'away' ? -.18 : .12));
+  const strongestRelationshipTension = Math.max(0, ...character.relationships.map(r => Math.max(r.tension, r.annoyance)));
+  const motivePressure = reason.includes('gossip') || reason.includes('news') ? .14 : .08;
+  const statusPressure = status === 'away' ? -.18 : .12;
+  const urgency = Math.min(.95, character.mood.intensity + strongestRelationshipTension * .18 + motivePressure + statusPressure);
   if (urgency < .35) return undefined;
-  return { characterId: character.id, reason, urgency, preferredMessageSeed: seedLineFor(character.screenName, reason), expiresAt: new Date(now.getTime()+1000*60*60*3).toISOString() };
+  return { characterId: character.id, reason, urgency, preferredMessageSeed: seedLineFor(character.screenName, reason, urgency), expiresAt: new Date(now.getTime()+1000*60*60*3).toISOString() };
 }
-function seedLineFor(screenName: string, reason: string) {
-  if (screenName === 'PixelKat') return 'hey how did that thing go today?';
-  if (screenName === 'xXS!rJayXx') return 'ben is being weird lol';
-  if (screenName === 'benji88') return 'did jay say anything';
+function seedLineFor(screenName: string, reason: string, urgency = .5) {
+  if (screenName === 'PixelKat') return urgency > .7 ? 'are you around? kinda need an opinion' : 'hey how did that thing go today?';
+  if (screenName === 'xXS!rJayXx') return reason.includes('Ben') ? 'did ben say anything to you' : 'ben is being weird lol';
+  if (screenName === 'benji88') return urgency > .65 ? 'can i ask you something without it becoming a thing' : 'did jay say anything';
   if (screenName === 'MATT_ATTACK') return 'amy said there was drama?';
   return reason.includes('gossip') ? 'omg are you there' : 'hey';
 }
+const visibleToPlayer = (event: WorldEvent, informedByIds: string[] = []) => event.publicKnowledge || informedByIds.some(id => Boolean(event.knownBy[id]));
 export function simulateDailyLife(characters: Character[], now = new Date()): DailySimulation {
   const jay = characters.find(c => c.id === 'char_jay_002');
   const ben = characters.find(c => c.id === 'char_ben_003');
   const kat = characters.find(c => c.id === 'char_kat_001');
   const amy = characters.find(c => c.id === 'char_amy_004');
   const events: WorldEvent[] = [];
-  if (jay && ben) events.push({ id:'evt_skate_argument', eventType:'social_conflict', participants:[jay.id, ben.id], occurredAt:new Date(now.getTime()-72e5).toISOString(), summary:'Jay and Ben argued after the skate park.', location:'skate_park', publicKnowledge:false, knownBy:{ [jay.id]:'participant, thinks Ben overreacted', [ben.id]:'participant, felt humiliated', [amy?.id ?? '']:'heard a slanted version from Jay' }, effects:{ jay_to_ben_annoyance:.12, ben_to_jay_trust:-.08 } });
+  if (jay && ben) events.push({ id:'evt_skate_argument', eventType:'social_conflict', participants:[jay.id, ben.id], occurredAt:new Date(now.getTime()-72e5).toISOString(), summary:'Jay and Ben argued after the skate park.', location:'skate_park', publicKnowledge:false, knownBy:{ [jay.id]:'participant, thinks Ben overreacted', [ben.id]:'participant, felt humiliated', ...(amy ? { [amy.id]:'heard a slanted version from Jay' } : {}) }, effects:{ jay_to_ben_annoyance:.12, ben_to_jay_trust:-.08 } });
   if (kat) events.push({ id:'evt_art_deadline', eventType:'deadline_pressure', participants:[kat.id], occurredAt:new Date(now.getTime()-30e5).toISOString(), summary:'Kat almost withdrew from the art competition before deciding to keep working.', location:'home', publicKnowledge:false, knownBy:{ [kat.id]:'participant' }, effects:{ kat_mood_intensity:.08 } });
-  const missedConversations = events.map((event, index) => ({ id:`missed_${index+1}`, participants:event.participants, summary:event.summary, occurredAt:event.occurredAt, visibleToPlayer:event.publicKnowledge }));
+  const informants = characters.map(c => buildInitiation(c, now)).filter((x): x is InitiationRecord => Boolean(x)).map(i => i.characterId);
+  const missedConversations = events
+    .filter(event => visibleToPlayer(event, informants))
+    .map((event, index) => {
+      const surfacedBy = event.publicKnowledge ? undefined : informants.find(id => Boolean(event.knownBy[id]));
+      return { id:`missed_${index+1}`, participants:event.participants, summary:event.summary, occurredAt:event.occurredAt, visibleToPlayer:true, surfacedBy };
+    });
   const simulatedCharacters = characters.map(c => ({ ...c, computedStatus: availabilityFor(c, now), activeBlock: activeScheduleBlock(c, now)?.activity ?? 'unaccounted-for offline time', profileChange: profileForMood(c, now), relationshipPulse: c.relationships.filter(r => r.tension > .5 || r.annoyance > .35) }));
-  return { simulatedAt: now.toISOString(), characters: simulatedCharacters, worldEvents: events, missedConversations, knowledgeBoundaries:['Characters only know events they participated in, witnessed, were told about, or saw posted publicly.','Conflicting accounts are preserved as perspectives rather than resolved into one objective chat line.'] };
+  return { simulatedAt: now.toISOString(), characters: simulatedCharacters, worldEvents: events, missedConversations, knowledgeBoundaries:['Characters only know events they participated in, witnessed, were told about, or saw posted publicly.','Missed private conversations appear only after a public post or after an initiating NPC who knows about them brings them up.','Conflicting accounts are preserved as perspectives rather than resolved into one objective chat line.'] };
 }
 export function catchUpOffline(characters: Character[], lastClosedAt: Date, reopenedAt = new Date()): OfflineCatchup {
   const hoursAbsent = Math.max(0, (reopenedAt.getTime() - lastClosedAt.getTime()) / 36e5);
   const daily = simulateDailyLife(characters, reopenedAt);
-  const worldEvents = hoursAbsent < 2 ? [] : daily.worldEvents.map(e => e.summary);
   const missedMessages = characters.map(c => buildInitiation(c, reopenedAt)).filter((x): x is InitiationRecord => Boolean(x));
+  const informants = missedMessages.map(message => message.characterId);
+  const worldEvents = hoursAbsent < 2 ? [] : daily.worldEvents.filter(event => visibleToPlayer(event, informants)).map(e => e.summary);
   return { hoursAbsent, worldEvents, missedMessages, absenceNotice: absenceNotice(hoursAbsent), daily };
 }
 export function absenceNotice(hours: number) {
@@ -68,5 +79,5 @@ export function absenceNotice(hours: number) {
 }
 export function curatedContextPackage(character: Character, playerMessage: string, knownEvents: WorldEvent[] = []) {
   const visibleEvents = knownEvents.filter(e => e.publicKnowledge || Boolean(e.knownBy[character.id]));
-  return { characterIdentity:{ id:character.id, screenName:character.screenName, realName:character.realName, profileText:character.profileText, interests:character.interests }, typingStyle: character.typingStyle, currentSituation: { mood:character.mood, status:character.status, awayMessage:character.awayMessage, activeBlock:activeScheduleBlock(character)?.activity }, relationshipWithPlayer:{ familiarity:.47, trust:.51, fondness:.63, annoyance:.08, curiosity:.72 }, npcRelationships: character.relationships, relevantMemories: character.memories.slice(0,4), currentConversation:[{ speaker:'player', text:playerMessage }], knownWorldEvents: visibleEvents, communicationRules:['Never describe actions like a roleplay narrator.','Write only chat messages.','Do not claim knowledge the character does not possess.','It is acceptable to misunderstand or not know things.','Keep messages consistent with 2004 technology and culture.'] };
+  return { characterIdentity:{ id:character.id, screenName:character.screenName, realName:character.realName, profileText:character.profileText, interests:character.interests }, typingStyle: character.typingStyle, currentSituation: { mood:character.mood, status:availabilityFor(character), awayMessage:character.awayMessage, activeBlock:activeScheduleBlock(character)?.activity }, relationshipWithPlayer:{ familiarity:.47, trust:.51, fondness:.63, annoyance:.08, curiosity:.72 }, npcRelationships: character.relationships, relevantMemories: character.memories.slice(0,4), currentConversation:[{ speaker:'player', text:playerMessage }], knownWorldEvents: visibleEvents, communicationRules:['Never describe actions like a roleplay narrator.','Write only chat messages.','Do not claim knowledge the character does not possess.','It is acceptable to misunderstand or not know things.','Keep messages consistent with 2004 technology and culture.','Keep private events private unless this character knows them or the event is public.'] };
 }
