@@ -4,13 +4,14 @@ AOLSim is an early-2000s instant-messenger simulation prototype inspired by the 
 
 ## Current scope
 
-This repository now contains a Phase 1 web prototype scaffold for the core experience:
+This repository now contains a Phase 2 web prototype scaffold for the core experience. The built-in product plan lives in [`docs/away-message-plan.md`](docs/away-message-plan.md), so the roadmap can be referenced from git instead of screenshot uploads:
 
 - Buddy list with Online, Away, and Offline groups.
-- Four interconnected characters with schedules, moods, away messages, memories, and motives.
+- Five interconnected characters with schedules, moods, away messages, memories, motives, NPC-to-NPC relationships, and profile variants.
 - One chat panel with persistent-feeling seeded history, typing delays, and first-message hooks.
-- Deterministic world simulation utilities for availability, offline catch-up, absence recognition, and NPC-initiated messages.
+- Deterministic world simulation utilities for daily life, availability, offline catch-up, absence recognition, NPC-initiated messages, knowledge boundaries, missed conversations, and shared world events.
 - SQLite schema documentation for the intended local source of truth.
+- Phase 2 UI panels that expose living-world events, private/public knowledge, relationship tension, and changing profiles.
 - A safe API boundary stub that keeps model calls out of the browser/client.
 
 ## Development
