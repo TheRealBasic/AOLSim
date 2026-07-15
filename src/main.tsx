@@ -31,21 +31,22 @@ function App() {
   async function send() {
     if (!input.trim()) return;
     const text = input.trim(); setInput('');
-    const selectedId = selected.id;
-    const selectedScreenName = selected.screenName;
-    const selectedCharacter = selected;
+    const capturedCharacterId = selected.id;
+    const capturedScreenName = selected.screenName;
+    const capturedConversationId = capturedCharacterId;
+    const capturedCharacter = selected;
     setMessagesByCharacter(messagesMap => ({
       ...messagesMap,
-      [selectedId]: [...(messagesMap[selectedId] ?? []), { sender:'You', body:text, at:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) }],
+      [capturedConversationId]: [...(messagesMap[capturedConversationId] ?? []), { sender:'You', body:text, at:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) }],
     }));
-    setTypingByCharacter(typingMap => ({ ...typingMap, [selectedId]: true }));
-    const response = await requestDialogue(selectedCharacter, text);
+    setTypingByCharacter(typingMap => ({ ...typingMap, [capturedCharacterId]: true }));
+    const response = await requestDialogue(capturedCharacter, text);
     response.messages.forEach((msg, index) => setTimeout(() => {
       setMessagesByCharacter(messagesMap => ({
         ...messagesMap,
-        [selectedId]: [...(messagesMap[selectedId] ?? []), { sender:selectedScreenName, body:msg.text, at:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) }],
+        [capturedConversationId]: [...(messagesMap[capturedConversationId] ?? []), { sender:capturedScreenName, body:msg.text, at:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) }],
       }));
-      if (index === response.messages.length-1) setTypingByCharacter(typingMap => ({ ...typingMap, [selectedId]: false }));
+      if (index === response.messages.length-1) setTypingByCharacter(typingMap => ({ ...typingMap, [capturedCharacterId]: false }));
     }, msg.delayMs));
   }
   const online = characters.filter(c => c.status==='online'); const away = characters.filter(c => c.status==='away'); const offline = characters.filter(c => c.status==='offline');
